@@ -61,6 +61,7 @@ __pycache__/
 # Ignore the ReasoningEngine plugin (separate repo)
 Plugins/ReasoningEngine/*
 !Plugins/ReasoningEngine/.git
+Plugins
 
 # Optional: If using git-lfs, don't ignore uasset/umap here
 # Instead, track them explicitly:
