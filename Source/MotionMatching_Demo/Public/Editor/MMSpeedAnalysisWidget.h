@@ -176,7 +176,7 @@ protected:
     URECore* SemanticEngine;
     
     UPROPERTY()
-    UREFuzzy* FuzzyMatcher;
+    REFuzzy* FuzzyMatcher;
     
     UPROPERTY()
     URETokenizer* Tokenizer;

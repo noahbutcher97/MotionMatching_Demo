@@ -821,7 +821,7 @@ private:
     URETokenizer* Tokenizer;
     
     UPROPERTY()
-    UREFuzzy* FuzzyMatcher;
+    REFuzzy* FuzzyMatcher;
     
     UPROPERTY()
     UREPatterns* PatternEngine;
