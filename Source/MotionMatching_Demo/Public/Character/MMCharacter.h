@@ -68,4 +68,3 @@ protected:
     UFUNCTION()
     void OnLookCompleted(const struct FInputActionValue& Value);
 };
-

@@ -87,11 +87,6 @@
 			"Enabled": true
 		},
 		{
-			"Name": "AnimationMatchingSuite",
-			"Enabled": true,
-			"MarketplaceURL": "https://www.fab.com/listings/82a3b79c-349f-47e6-89ed-4af3c3c8270b"
-		},
-		{
 			"Name": "AnimNextChooser",
 			"Enabled": true
 		},
@@ -198,11 +193,6 @@
 		{
 			"Name": "Text3D",
 			"Enabled": true
-		},
-		{
-			"Name": "ModuleGenerator",
-			"Enabled": true,
-			"MarketplaceURL": "com.epicgames.launcher://ue/marketplace/product/ec36ec6e94f74075819e2a04f7cb97f3"
 		}
 	]
 }

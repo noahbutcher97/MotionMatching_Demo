@@ -1778,11 +1778,10 @@ void FMotionData::BuildMMTrajectory(
                 FVector SegmentDelta = PredPos - LastPosition;
                 float SegmentTime = T - AccumulatedTime;
                 float ImpliedSpeed = SegmentDelta.Size() / FMath::Max(0.001f, SegmentTime);
-                
+    
                 ApplySpeedMatchingToSegment(
                     PredPos,
                     LastPosition,
-                    CurrentSample.WorldPosition,
                     ImpliedSpeed,
                     T,
                     *SpeedConfig,
@@ -1806,6 +1805,79 @@ void FMotionData::BuildMMTrajectory(
             AccumulatedTime = T;
         }
     }
+    if (bUseSpeedMatching && SpeedAnalysis && SpeedAnalysis->CurrentTargetSpeed > SpeedConfig->MinSpeedThreshold) // Use SpeedConfig here!
+    {
+        // Find the current sample (T=0)
+        int32 CurrentSampleIdx = INDEX_NONE;
+        for (int32 i = 0; i < OutTrajectory.Samples.Num(); i++)
+        {
+            if (FMath::IsNearlyZero(OutTrajectory.Samples[i].TimeInSeconds))
+            {
+                CurrentSampleIdx = i;
+                break;
+            }
+        }
+    
+        if (CurrentSampleIdx != INDEX_NONE && CurrentSampleIdx < OutTrajectory.Samples.Num() - 1)
+        {
+            // Calculate average implied speed of FUTURE trajectory samples
+            float TotalImpliedSpeed = 0.f;
+            int32 SampleCount = 0;
+        
+            for (int32 i = CurrentSampleIdx + 1; i < OutTrajectory.Samples.Num(); i++)
+            {
+                const FTransformTrajectorySample& Curr = OutTrajectory.Samples[i];
+                const FTransformTrajectorySample& Prev = OutTrajectory.Samples[i - 1];
+            
+                float DeltaTime = Curr.TimeInSeconds - Prev.TimeInSeconds;
+                if (DeltaTime > 0.001f)
+                {
+                    float ImpliedSpeed = FVector::Distance(Curr.Position, Prev.Position) / DeltaTime;
+                    TotalImpliedSpeed += ImpliedSpeed;
+                    SampleCount++;
+                }
+            }
+        
+            if (SampleCount > 0)
+            {
+                float AvgImpliedSpeed = TotalImpliedSpeed / SampleCount;
+            
+                // Calculate scaling factor to match target cluster speed
+                float ScaleFactor = SpeedAnalysis->CurrentTargetSpeed / AvgImpliedSpeed;
+                ScaleFactor = FMath::Clamp(ScaleFactor, SpeedConfig->MinSpeedRatio, SpeedConfig->MaxSpeedRatio); // Use SpeedConfig!
+            
+                // Apply strength - full strength recommended for cluster-based matching
+                float FinalScale = FMath::Lerp(1.0f, ScaleFactor, SpeedConfig->SpeedMatchStrength); // Use SpeedConfig!
+            
+                // Only apply if scaling is meaningful
+                if (!FMath::IsNearlyEqual(FinalScale, 1.0f, 0.01f))
+                {
+                    const FVector CurrentPos = OutTrajectory.Samples[CurrentSampleIdx].Position;
+                
+                    // Scale all FUTURE samples uniformly from current position
+                    for (int32 i = CurrentSampleIdx + 1; i < OutTrajectory.Samples.Num(); i++)
+                    {
+                        FTransformTrajectorySample& Sample = OutTrajectory.Samples[i];
+                        FVector Offset = Sample.Position - CurrentPos;
+                        Sample.Position = CurrentPos + (Offset * FinalScale);
+                    }
+                
+                    if (SpeedConfig->bDebugLog) // Use SpeedConfig!
+                    {
+                        static int32 PostScaleLogCounter = 0;
+                        if (++PostScaleLogCounter % 300 == 0)
+                        {
+                            UE_LOG(LogTemp, Warning, TEXT("POST-BUILD SCALE: AvgImplied=%.1f, Target=%.1f, Scale=%.2f"),
+                                AvgImpliedSpeed, SpeedAnalysis->CurrentTargetSpeed, FinalScale);
+                        }
+                    }
+                }
+            }
+        }
+    }
+    // ============================================================================
+    // END POST-BUILD SCALING
+    // ============================================================================
     
 #if WITH_EDITOR
     if (bUseSpeedMatching && OutTrajectory.Samples.Num() > 1 && SpeedConfig->bDebugLog)
@@ -1814,6 +1886,9 @@ void FMotionData::BuildMMTrajectory(
         if (++ValidationCounter % 300 == 0)
         {
             UE_LOG(LogTemp, Warning, TEXT("=== Trajectory Speed Validation ==="));
+            UE_LOG(LogTemp, Warning, TEXT("Current Cluster: %d, Target Speed: %.1f cm/s"),
+                SpeedAnalysis->CurrentClusterIndex, SpeedAnalysis->CurrentTargetSpeed);
+                
             for (int32 i = 1; i < OutTrajectory.Samples.Num(); i++)
             {
                 const FTransformTrajectorySample& Curr = OutTrajectory.Samples[i];
@@ -1825,18 +1900,21 @@ void FMotionData::BuildMMTrajectory(
                     float ImpliedSpeed = FVector::Distance(Curr.Position, Prev.Position) / DeltaTime;
                     
                     bool bInValidRange = false;
-                    for (const FSpeedCluster& Cluster : SpeedAnalysis->DetectedClusters)
+                    int32 MatchingCluster = -1;
+                    for (int32 ClusterIdx = 0; ClusterIdx < SpeedAnalysis->DetectedClusters.Num(); ClusterIdx++)
                     {
-                        if (Cluster.Contains(ImpliedSpeed))
+                        if (SpeedAnalysis->DetectedClusters[ClusterIdx].Contains(ImpliedSpeed))
                         {
                             bInValidRange = true;
+                            MatchingCluster = ClusterIdx;
                             break;
                         }
                     }
                     
-                    UE_LOG(LogTemp, Warning, TEXT("  Sample %d (T=%.2f): Speed=%.1f %s"),
+                    UE_LOG(LogTemp, Warning, TEXT("  Sample %d (T=%.2f): Speed=%.1f %s (Cluster %d)"),
                         i, Curr.TimeInSeconds, ImpliedSpeed,
-                        bInValidRange ? TEXT("✓") : TEXT("✗ OUT OF RANGE"));
+                        bInValidRange ? TEXT("✓") : TEXT("✗"),
+                        MatchingCluster);
                 }
             }
         }
@@ -2078,7 +2156,6 @@ float FMotionData::GetAdaptiveSmoothingRate(const FTrajectoryConfig& Config) con
 void FMotionData::ApplySpeedMatchingToSegment(
     FVector& InOutPosition,
     const FVector& LastPosition,
-    const FVector& CurrentWorldPosition,
     float ImpliedSpeed,
     float TimeOffset,
     const FDynamicSpeedMatchConfig& Config,
@@ -2099,21 +2176,23 @@ void FMotionData::ApplySpeedMatchingToSegment(
         
         float FinalRatio = FMath::Lerp(1.0f, SpeedRatio, Config.SpeedMatchStrength);
         
-        FVector AdjustedDelta = (InOutPosition - CurrentWorldPosition) * FinalRatio;
-        InOutPosition = CurrentWorldPosition + AdjustedDelta;
+        // Scale from LastPosition (previous trajectory sample)
+        FVector Delta = InOutPosition - LastPosition;
+        FVector ScaledDelta = Delta * FinalRatio;
+        InOutPosition = LastPosition + ScaledDelta;
         
         if (Config.bDebugLog)
         {
             static int32 LogCounter = 0;
             if (++LogCounter % 60 == 0)
             {
-                UE_LOG(LogTemp, VeryVerbose, TEXT("Speed Match Applied: Implied=%.1f, Target=%.1f, Ratio=%.2f at T=%.2f"),
-                    ImpliedSpeed, TargetAnimSpeed, FinalRatio, TimeOffset);
+                UE_LOG(LogTemp, Warning, TEXT("Speed Match Segment: CharSpeed=%.1f, Target=%.1f, Ratio=%.2f, T=%.2f, Delta=%.1f->%.1f"),
+                    ImpliedSpeed, TargetAnimSpeed, FinalRatio, TimeOffset, 
+                    Delta.Size(), ScaledDelta.Size());
             }
         }
     }
 }
-
 
 float FMotionData::FindBestDatabaseSpeed(float CharacterSpeed, const TArray<FSpeedCluster>& Clusters)
 {

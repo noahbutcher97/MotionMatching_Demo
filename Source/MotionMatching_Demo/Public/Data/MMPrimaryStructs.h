@@ -1488,7 +1488,6 @@ private:
     static void ApplySpeedMatchingToSegment(
         FVector& InOutPosition,
         const FVector& LastPosition,
-        const FVector& CurrentWorldPosition,
         float ImpliedSpeed,
         float TimeOffset,
         const FDynamicSpeedMatchConfig& Config,

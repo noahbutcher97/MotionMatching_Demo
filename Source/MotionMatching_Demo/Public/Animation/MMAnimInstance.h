@@ -1,10 +1,19 @@
 // Animation/.h - REFACTORED FOR ASYNC ENVIRONMENT SCANS
 #pragma once
 
+// At the top of MMAnimInstance.h, add these includes after the existing ones:
+
+// Animation/MMAnimInstance.h - REFACTORED FOR ASYNC ENVIRONMENT SCANS
+#pragma once
+
 #include "CoreMinimal.h"
 #include "Data/MMPrimaryStructs.h"
 #include "Animation/AnimInstance.h"
+#include "Data/MMSemanticTypes.h"
+#include "PoseSearch/MMPoseSearchSpeedAnalyzer.h"
 #include "MMAnimInstance.generated.h"
+
+
 
 // (Struct definitions FMotionMatchingConfig and FEnvironmentScanStats remain unchanged)
 USTRUCT(BlueprintType)
@@ -148,6 +157,24 @@ public:
 protected:
     UPROPERTY()
     UCharacterMovementComponent* CachedMovementComponent = nullptr;
+
+    // NEW: Speed analyzer
+    UPROPERTY()
+    UMMPoseSearchSpeedAnalyzer* SpeedAnalyzer = nullptr;
+
+    // NEW: Cached semantic speed clusters  
+    UPROPERTY(BlueprintReadOnly, Category="MM|Speed Matching")
+    TArray<FSemanticSpeedCluster> CachedSemanticClusters;
+
+    /**
+    * Initialize speed clustering system from database
+    */
+    void InitializeSpeedClusters();
+
+    /**
+    * Convert semantic clusters to legacy speed cluster format
+    */
+    TArray<FSpeedCluster> ConvertSemanticToSpeedClusters(const TArray<FSemanticSpeedCluster>& SemanticClusters);
     
     // Environmental cache
     FCachedEnvironmentData EnvironmentCache;
@@ -205,6 +232,13 @@ public:
     UFUNCTION(BlueprintCallable, Category="MM|Motion")
     void BuildTrajectory(float DeltaSeconds);
 
+    /**
+ * Build trajectory with semantic speed cluster matching
+ * Uses cached semantic clusters from database analysis
+ */
+    void BuildTrajectoryWithSpeedMatch(float DeltaSeconds);
+
+    
     void BuildTrajectoryWithCustomSpeedModel(
         const TArray<FSpeedCluster>& CustomSpeedClusters,
         float SpeedMatchStrength);

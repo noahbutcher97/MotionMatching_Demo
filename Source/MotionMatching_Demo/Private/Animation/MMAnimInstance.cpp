@@ -10,6 +10,7 @@
 #include "Camera/PlayerCameraManager.h"
 #include "Character/MMCharacter.h"
 #include "FunctionLibraries//MMPoseSearchUtils.h"
+#include "PoseSearch/MMPoseSearchSpeedAnalyzer.h"
 
 void UMMAnimInstance::NativeInitializeAnimation()
 {
@@ -72,6 +73,10 @@ void UMMAnimInstance::NativeInitializeAnimation()
     
     SpeedSampleTimer = 0.f;
     SpeedSampleHistory.Empty();
+    if (MotionMatchingDatabase && bEnableSpeedMatching)
+    {
+        InitializeSpeedClusters();
+    }
 }
 
 
@@ -95,18 +100,35 @@ void UMMAnimInstance::NativeUpdateAnimation(float DeltaSeconds)
     GatherMotionData(DeltaSeconds);
     UpdateRotationSystem(DeltaSeconds);
     
-    if (bEnableSpeedMatching && SpeedAnalysis.DetectedClusters.Num() > 0)
+    // SEMANTIC SPEED MATCHING - Replace old cluster detection with semantic analysis
+    if (bEnableSpeedMatching)
     {
-        float CurrentSpeed = MMCharacter->GetVelocity().Size();
+        // Initialize semantic clusters if not done yet
+        if (CachedSemanticClusters.Num() == 0 && MotionMatchingDatabase)
+        {
+            InitializeSpeedClusters();
+        }
         
-        float TargetSpeed = UMMPoseSearchUtils::GetTargetAnimationSpeed(
-            CurrentSpeed,
-            SpeedAnalysis,
-            SpeedMatchConfig,
-            DeltaSeconds
-        );
+        // Convert semantic clusters to the format GetTargetAnimationSpeed expects
+        if (CachedSemanticClusters.Num() > 0)
+        {
+            SpeedAnalysis.DetectedClusters = ConvertSemanticToSpeedClusters(CachedSemanticClusters);
+        }
         
-        SpeedAnalysis.CurrentTargetSpeed = TargetSpeed;
+        // Use existing target speed calculation for smooth transitions
+        if (SpeedAnalysis.DetectedClusters.Num() > 0)
+        {
+            float CurrentSpeed = MMCharacter->GetVelocity().Size();
+            
+            float TargetSpeed = UMMPoseSearchUtils::GetTargetAnimationSpeed(
+                CurrentSpeed,
+                SpeedAnalysis,
+                SpeedMatchConfig,
+                DeltaSeconds
+            );
+            
+            SpeedAnalysis.CurrentTargetSpeed = TargetSpeed;
+        }
     }
     
     BuildTrajectory(DeltaSeconds);
@@ -118,7 +140,6 @@ void UMMAnimInstance::NativeUpdateAnimation(float DeltaSeconds)
         TrajectoryConfig
     );
     
-    // ... (rest of the function remains the same as your version)
     const FMotionSample CurrentSample = MotionHistory.GetNewestSample();
     const FVector LocalVelocity = GetMeshRotation().UnrotateVector(CurrentSample.WorldVelocity);
     
@@ -182,6 +203,113 @@ void UMMAnimInstance::NativeUpdateAnimation(float DeltaSeconds)
 }
 
 
+void UMMAnimInstance::InitializeSpeedClusters()
+{
+    if (!MotionMatchingDatabase)
+    {
+        UE_LOG(LogTemp, Warning, TEXT("Cannot initialize speed clusters: No database assigned"));
+        return;
+    }
+    
+    // Create analyzer if needed
+    if (!SpeedAnalyzer)
+    {
+        SpeedAnalyzer = NewObject<UMMPoseSearchSpeedAnalyzer>(this);
+        SpeedAnalyzer->Initialize();
+    }
+    
+    // Configure clustering
+    FSemanticSpeedConfig Config;
+    Config.MaxClusters = 10;                   // Max number of speed tiers
+    Config.MinAnimationsPerCluster = 2;        // Minimum anims per cluster
+    Config.ClusterMergeThreshold = 75.0f;      // Merge if speeds within this range (cm/s)
+    Config.SemanticWeight = 0.4f;              // Weight for semantic similarity (0-1)
+    Config.bVerboseLogging = true;             // Enable for initial testing
+    Config.bEnableCaching = true;              // Cache results
+    
+    // Generate clusters from database
+    const double StartTime = FPlatformTime::Seconds();
+    
+    CachedSemanticClusters = SpeedAnalyzer->GenerateSemanticSpeedClusters(
+        MotionMatchingDatabase, 
+        Config
+    );
+    
+    const double ElapsedTime = FPlatformTime::Seconds() - StartTime;
+    
+    if (CachedSemanticClusters.Num() > 0)
+    {
+        UE_LOG(LogTemp, Warning, TEXT("Speed Clustering Complete: %d clusters generated in %.2fms"),
+            CachedSemanticClusters.Num(),
+            ElapsedTime * 1000.0);
+        
+        // Log cluster details
+        for (int32 i = 0; i < CachedSemanticClusters.Num(); ++i)
+        {
+            const FSemanticSpeedCluster& Cluster = CachedSemanticClusters[i];
+            
+            UE_LOG(LogTemp, Log, TEXT("  Cluster %d: %s"), i, *Cluster.ClusterName);
+            UE_LOG(LogTemp, Log, TEXT("    Speed: %.1f cm/s (%.1f - %.1f)"),
+                Cluster.CenterSpeed,
+                Cluster.MinSpeed,
+                Cluster.MaxSpeed);
+            UE_LOG(LogTemp, Log, TEXT("    Animations: %d, Intent: %s, Level: %s"),
+                Cluster.AnimationCount,
+                *UEnum::GetValueAsString(Cluster.PrimaryIntent),
+                *UEnum::GetValueAsString(Cluster.SpeedLevel));
+            UE_LOG(LogTemp, Log, TEXT("    Thresholds: Entry=%.1f, Exit=%.1f, Hysteresis=%.1f"),
+                Cluster.EntryThreshold,
+                Cluster.ExitThreshold,
+                Cluster.HysteresisWidth);
+        }
+        
+        // Memory usage report
+        const int32 MemoryUsage = SpeedAnalyzer->GetMemoryUsage();
+        UE_LOG(LogTemp, Log, TEXT("  Memory Usage: %.2f KB"), MemoryUsage / 1024.0f);
+    }
+    else
+    {
+        UE_LOG(LogTemp, Error, TEXT("Speed Clustering Failed: No clusters generated"));
+    }
+}
+
+
+TArray<FSpeedCluster> UMMAnimInstance::ConvertSemanticToSpeedClusters(
+    const TArray<FSemanticSpeedCluster>& SemanticClusters)
+{
+    TArray<FSpeedCluster> Result;
+    
+    if (SemanticClusters.Num() == 0)
+    {
+        return Result;
+    }
+    
+    // Calculate total animations for weight normalization
+    float TotalAnimations = 0.0f;
+    for (const FSemanticSpeedCluster& Semantic : SemanticClusters)
+    {
+        TotalAnimations += Semantic.AnimationCount;
+    }
+    
+    // Convert each semantic cluster
+    for (const FSemanticSpeedCluster& Semantic : SemanticClusters)
+    {
+        FSpeedCluster Cluster;
+        Cluster.CenterSpeed = Semantic.CenterSpeed;
+        Cluster.MinSpeed = Semantic.MinSpeed;
+        Cluster.MaxSpeed = Semantic.MaxSpeed;
+        Cluster.SampleCount = Semantic.AnimationCount;
+        
+        // Normalize weight based on animation count
+        Cluster.Weight = TotalAnimations > 0.0f 
+            ? Semantic.AnimationCount / TotalAnimations 
+            : 0.0f;
+        
+        Result.Add(Cluster);
+    }
+    
+    return Result;
+}
 
 void UMMAnimInstance::UpdateRotationSystem(float DeltaSeconds)
 {
@@ -724,6 +852,106 @@ void UMMAnimInstance::BuildTrajectory(float DeltaSeconds)
         DeltaSeconds,
         ConfigPtr,
         AnalysisPtr
+    );
+}
+
+void UMMAnimInstance::BuildTrajectoryWithSpeedMatch(float DeltaSeconds)
+{
+    if (!MMCharacter || !CachedMovementComponent)
+    {
+        return;
+    }
+    
+    // Initialize clusters if not already done
+    if (CachedSemanticClusters.Num() == 0 && MotionMatchingDatabase)
+    {
+        InitializeSpeedClusters();
+    }
+    
+    // Extract character context
+    FCharacterMotionContext CharContext = MotionHistory.GetCharacterContext(
+        MMCharacter->GetControlYawRotation(),
+        GetMeshRotation(),
+        TrajectoryConfig
+    );
+    
+    // Update rotation system
+    const float ControlAngularVel = MotionHistory.GetSampleCount() > 1 ?
+        FMath::FindDeltaAngleDegrees(LastControlYaw, CharContext.ControlRotation.Yaw) / DeltaSeconds : 0.f;
+    
+    TrajectoryConfig.RotationConfig.UpdateRotationState(
+        CharContext.ControlRotation.Yaw,
+        ControlAngularVel,
+        DeltaSeconds
+    );
+    
+    if (!TrajectoryConfig.RotationConfig.bUseCharacterMovementRotation)
+    {
+        FVector CurrentAcceleration = FVector::ZeroVector;
+        if (CachedMovementComponent)
+        {
+            CurrentAcceleration = CachedMovementComponent->GetCurrentAcceleration();
+        }
+        
+        TrajectoryConfig.RotationConfig.UpdateManualRotation(
+            MMCharacter,
+            CharContext.ControlRotation,
+            MMCharacter->GetVelocity(),
+            MMCharacter->CurrentMoveInput,
+            CurrentAcceleration,
+            DeltaSeconds
+        );
+    }
+    
+    LastControlYaw = CharContext.ControlRotation.Yaw;
+    
+    // Set up speed matching configuration
+    FDynamicSpeedMatchConfig CustomConfig = SpeedMatchConfig;
+    
+    // Populate speed analysis with semantic clusters
+    FDynamicSpeedAnalysis CustomAnalysis;
+    CustomAnalysis.DetectedClusters = ConvertSemanticToSpeedClusters(CachedSemanticClusters);
+    CustomAnalysis.CurrentActualSpeed = MMCharacter->GetVelocity().Size();
+    CustomAnalysis.CurrentClusterIndex = -1;
+    CustomAnalysis.TimeSinceLastTransition = 0.f;
+    CustomAnalysis.bIsTransitioning = false;
+    
+    // Find current cluster if we're moving
+    if (CustomAnalysis.CurrentActualSpeed > 10.0f && SpeedAnalyzer)
+    {
+        CustomAnalysis.CurrentClusterIndex = SpeedAnalyzer->FindBestCluster(
+            CustomAnalysis.CurrentActualSpeed,
+            CachedSemanticClusters
+        );
+        
+        if (CustomAnalysis.CurrentClusterIndex != INDEX_NONE)
+        {
+            const FSemanticSpeedCluster& CurrentCluster = CachedSemanticClusters[CustomAnalysis.CurrentClusterIndex];
+            
+            // Log cluster match for debugging (disable after testing)
+            if (GFrameCounter % 60 == 0) // Every 60 frames (~1 second)
+            {
+                UE_LOG(LogTemp, VeryVerbose, TEXT("Speed Match: %.1f cm/s -> Cluster '%s' (%.1f cm/s)"),
+                    CustomAnalysis.CurrentActualSpeed,
+                    *CurrentCluster.ClusterName,
+                    CurrentCluster.CenterSpeed);
+            }
+        }
+    }
+    
+    // Build trajectory with speed matching enabled
+    // EnvContext is already a member variable, no need to extract it
+    MotionHistory.BuildMMTrajectory(
+        TrajectoryTimeOffsets,
+        TrajectoryForMM,
+        TrajectoryConfig,
+        CharContext,
+        AnimContext,
+        EnvContext,          // This is the cached member variable
+        CachedMovementComponent,
+        DeltaSeconds,
+        &CustomConfig,       // Speed match config
+        &CustomAnalysis      // Speed analysis with semantic clusters
     );
 }
 

@@ -6,6 +6,7 @@ public class MotionMatching_Demo : ModuleRules
 {
 	public MotionMatching_Demo(ReadOnlyTargetRules Target) : base(Target)
 	{
+		bUseUnity = false;  // Add this line
 		PCHUsage = PCHUsageMode.UseExplicitOrSharedPCHs;
 	
 		PublicIncludePaths.AddRange(
@@ -30,7 +31,7 @@ public class MotionMatching_Demo : ModuleRules
 			"AnimGraphRuntime", 
 			"MotionTrajectory",
 			"DeveloperSettings",  // <-- ADDED: Required for UFuzzyMatchingSettings
-			"ReasoningEngine"
+			//"ReasoningEngine"
 		});
 
 		PrivateDependencyModuleNames.AddRange(new string[] { 
