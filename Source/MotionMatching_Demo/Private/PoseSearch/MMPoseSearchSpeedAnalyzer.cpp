@@ -1,5 +1,5 @@
 ﻿// MMPoseSearchSpeedAnalyzer.cpp - CLEANED VERSION
-#include "PoseSearch//MMPoseSearchSpeedAnalyzer.h"
+#include "PoseSearch/MMPoseSearchSpeedAnalyzer.h"
 #include "Data/MMSemanticTypes.h"
 #include "Animation/AnimSequence.h"
 #include "Animation/AnimationPoseData.h"

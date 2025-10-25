@@ -9,7 +9,7 @@
 #include "GameFramework/PlayerController.h"
 #include "Camera/PlayerCameraManager.h"
 #include "Character/MMCharacter.h"
-#include "FunctionLibraries//MMPoseSearchUtils.h"
+#include "FunctionLibraries/MMPoseSearchUtils.h"
 #include "PoseSearch/MMPoseSearchSpeedAnalyzer.h"
 
 void UMMAnimInstance::NativeInitializeAnimation()

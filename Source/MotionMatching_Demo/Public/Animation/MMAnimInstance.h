@@ -82,7 +82,7 @@ class MOTIONMATCHING_DEMO_API UMMAnimInstance : public UAnimInstance
 
 public:
     // Character reference
-    UPROPERTY(BlueprintReadOnly, Category="MM|References");
+    UPROPERTY(BlueprintReadOnly, Category="MM|References")
     class AMMCharacter* MMCharacter;
     // OPTIMIZED Motion tracking with adaptive buffer
     UPROPERTY(BlueprintReadOnly, Category="OH|Motion")
