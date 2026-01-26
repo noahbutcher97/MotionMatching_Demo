@@ -105,6 +105,7 @@ MotionMatching_Demo/
    git clone https://github.com/noahbutcher97/MotionMatching_Demo.git
    cd MotionMatching_Demo
    ```
+   *(Note: Replace with your actual repository URL if forked)*
 
 2. **Open the project**:
    - Double-click `MotionMatching_Demo.uproject` to open in Unreal Engine 5.6
@@ -127,11 +128,11 @@ MotionMatching_Demo/
 
 #### From Command Line:
 ```bash
-# Windows
-"C:\Program Files\Epic Games\UE_5.6\Engine\Build\BatchFiles\Build.bat" MotionMatching_DemoEditor Win64 Development "Path\To\MotionMatching_Demo.uproject"
+# Windows (adjust UE path based on your installation)
+"C:\Program Files\Epic Games\UE_5.6\Engine\Build\BatchFiles\Build.bat" MotionMatching_DemoEditor Win64 Development "%CD%\MotionMatching_Demo.uproject"
 
-# Linux
-/path/to/UE5/Engine/Build/BatchFiles/Linux/Build.sh MotionMatching_DemoEditor Linux Development "/path/to/MotionMatching_Demo.uproject"
+# Linux (adjust UE path based on your installation)
+$UE5_ROOT/Engine/Build/BatchFiles/Linux/Build.sh MotionMatching_DemoEditor Linux Development "$(pwd)/MotionMatching_Demo.uproject"
 ```
 
 ## Usage
