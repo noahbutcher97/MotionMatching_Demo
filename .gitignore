@@ -58,10 +58,9 @@ __pycache__/
 *.xcodeproj
 *.xcworkspace
 
-# Ignore the ReasoningEngine plugin (separate repo)
-Plugins/ReasoningEngine/*
-!Plugins/ReasoningEngine/.git
-Plugins
+# ReasoningEngine ships as a git submodule at Plugins/ReasoningEngine (tracked).
+# Only ignore plugin build artifacts; Binaries/ Intermediate/ Saved/ rules above
+# already match these at any depth, so nothing extra is needed here.
 
 # Optional: If using git-lfs, don't ignore uasset/umap here
 # Instead, track them explicitly:
