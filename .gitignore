@@ -54,17 +54,44 @@ env/
 __pycache__/
 *.pyc
 
+# AI assistant local files, prompts, and agent workspaces
+AGENTS.md
+CLAUDE.md
+GEMINI.md
+QWEN.md
+AIDER.md
+llms.txt
+.mcp.json
+.mcp.local.json
+.uemcp-targets.json
+.uemcp-targets.txt
+.agents/
+.claude/
+.codex/
+.cursor/
+.continue/
+.windsurf/
+.aider/
+.gemini/
+.qwen/
+.roo/
+.github/copilot-instructions.md
+.github/instructions/
+.github/prompts/
+.cursorrules
+.windsurfrules
+.aider*
+Plugins/UEMCP/
+
 # Ignore generated project files
 *.xcodeproj
 *.xcworkspace
 
-# Ignore the ReasoningEngine plugin (separate repo)
-Plugins/ReasoningEngine/*
-!Plugins/ReasoningEngine/.git
-Plugins
+# ReasoningEngine ships as a git submodule at Plugins/ReasoningEngine (tracked).
+# Only ignore plugin build artifacts; Binaries/ Intermediate/ Saved/ rules above
+# already match these at any depth, so nothing extra is needed here.
 
 # Optional: If using git-lfs, don't ignore uasset/umap here
 # Instead, track them explicitly:
 # git lfs track "*.uasset"
 # git lfs track "*.umap"
-
