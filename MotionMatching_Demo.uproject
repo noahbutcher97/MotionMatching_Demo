@@ -197,6 +197,18 @@
 		{
 			"Name": "ReasoningEngine",
 			"Enabled": false
+		},
+		{
+			"Name": "RemoteControl",
+			"Enabled": true
+		},
+		{
+			"Name": "PythonScriptPlugin",
+			"Enabled": true
+		},
+		{
+			"Name": "GeometryScripting",
+			"Enabled": true
 		}
 	]
 }
