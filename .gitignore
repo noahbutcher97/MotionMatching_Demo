@@ -58,9 +58,6 @@ __pycache__/
 *.xcodeproj
 *.xcworkspace
 
-# Ignore the ReasoningEngine plugin (separate repo)
-Plugins/ReasoningEngine/*
-!Plugins/ReasoningEngine/.git
 Plugins
 
 # Optional: If using git-lfs, don't ignore uasset/umap here

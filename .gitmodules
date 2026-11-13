@@ -1,0 +1,3 @@
+[submodule "Plugins/ReasoningEngine"]
+	path = Plugins/ReasoningEngine
+	url = https://github.com/noahbutcher97/ReasoningEngine.git
