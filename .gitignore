@@ -68,3 +68,6 @@ Plugins
 # git lfs track "*.uasset"
 # git lfs track "*.umap"
 
+
+# Machine-local Claude Code settings
+.claude/settings.local.json
